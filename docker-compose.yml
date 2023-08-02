@@ -1,0 +1,62 @@
+version: "3.8"
+services:
+  # アプリの設定
+  app:
+    # Dockerfileのあるディレクトリパスを指定
+    build: .
+    # 環境変数の設定（.envから読み込む）
+    env_file:
+      - ./.env
+    # 開発環境のRAILS_ENVはdevelopmentを設定
+    environment:
+      - RAILS_ENV=development
+    # コマンド実行（Rails特有の問題解決とRailsの立ち上げ）
+    command: bash -c "rm -f tmp/pids/server.pid && bundle install && bundle exec pumactl start"
+    # データの永続化
+    volumes:
+      # ローカルのカレントディレクトリにマウント
+      - .:/app/webapp
+      # Webサーバー側からpuma.sockを見れるようにするため永続化
+      - ./tmp/sockets:/app/webapp/tmp/sockets
+    ports:
+      - 3000:3000
+    # 標準入出力デバイスを設定
+    tty: true
+    stdin_open: true
+    # 依存関係の指定（dbが起動した後に、appが起動する）
+    depends_on:
+      - db
+  db:
+    platform: linux/x86_64
+    restart:
+      always
+    image: mysql:8.0.31
+    # 環境変数の設定（.envから読み込む）
+    env_file:
+      - ./.env
+    # ポートの指定（外部からアクセス時のポート：コンテナからアクセス時のポート）
+    ports:
+      - 3306:3306
+    command: --default-authentication-plugin=mysql_native_password
+    # データの永続化（ローカルのtmp/dbディレクトリにマウント）
+    volumes:
+      - ./tmp/db:/var/lib/mysql
+  # Webサーバーの設定
+  web:
+    # Dockerfileのあるディレクトリパスを指定
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile
+    # データの永続化
+    volumes:
+      # Nginxのログ出力を永続化
+      - ./nginx/log:/var/log/nginx
+      # Webサーバー側からアプリの/tmpと/publicを見れるようにするため永続化
+      - ./tmp:/app/webapp/tmp
+      - ./public:/app/webapp/public
+    # ポートの指定（外部からアクセス時のポート：コンテナからアクセス時のポート）
+    ports:
+      - 80:80
+    # 依存関係の指定（appが起動した後に、webが起動する）
+    depends_on:
+      - app
